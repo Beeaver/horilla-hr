@@ -96,7 +96,7 @@ class TourApiTests(TestCase):
         tours = self._active("dashboard")
         self.assertNotIn("admins-only", tours)
         self.assertNotIn("getting-started", tours)  # seeded tour is admins-only
-        self.assertIn("dashboard-overview", tours)  # seeded 'all' tour
+        self.assertIn("dashboard-highlights", tours)  # seeded 'all' tour
 
     def test_unpublished_tour_hidden(self):
         make_tour("draft-tour", is_published=False)
