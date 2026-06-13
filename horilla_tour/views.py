@@ -67,7 +67,15 @@ def _tour_matches_page(tour, page, path):
     if not tour.page_match:
         return True
     if tour.match_type == "url_name":
-        return tour.page_match == page
+        effective_page = page
+        # After HTMX navigation the JS passes path="" page="" — resolve it.
+        if not effective_page and path:
+            try:
+                from django.urls import resolve
+                effective_page = resolve(path).url_name or ""
+            except Exception:
+                pass
+        return tour.page_match == effective_page
     return bool(path) and path.startswith(tour.page_match)
 
 

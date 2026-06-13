@@ -220,4 +220,18 @@
   } else {
     loadAndAuto();
   }
+
+  // Re-run after HTMX navigation so module-page tours fire correctly.
+  // ctx.page is set once at render time from the server template; after
+  // pushState navigation it goes stale. We update ctx.path to the live
+  // pathname and clear ctx.page so the server resolves the url_name from
+  // the path via django.urls.resolve() (see views.py _tour_matches_page).
+  document.addEventListener("htmx:afterSettle", function () {
+    var newPath = window.location.pathname;
+    if (newPath === ctx.path) return;
+    ctx.path = newPath;
+    ctx.page = "";
+    TOURS = [];
+    loadAndAuto();
+  });
 })();
