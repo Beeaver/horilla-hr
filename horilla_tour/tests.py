@@ -141,6 +141,120 @@ class TourPermissionTests(TestCase):
         self.assertNotEqual(resp.status_code, 200)
 
 
+MODULE_TOUR_SLUGS = [
+    "employee-directory",
+    "ess-dashboard-tour",
+    "recruitment-pipeline",
+    "leave-management",
+    "attendance-tracking",
+    "payroll-overview",
+    "asset-management",
+    "performance-management",
+    "onboarding-pipeline",
+    "offboarding-process",
+    "project-management",
+    "helpdesk-overview",
+]
+
+MODULE_PAGE_MATCHES = {
+    "employee-directory": "employee-view",
+    "ess-dashboard-tour": "ess-dashboard",
+    "recruitment-pipeline": "cbv-pipeline",
+    "leave-management": "leave-dashboard",
+    "attendance-tracking": "attendance-dashboard",
+    "payroll-overview": "view-payroll-dashboard",
+    "asset-management": "asset-dashboard",
+    "performance-management": "dashboard-view",
+    "onboarding-pipeline": "onboarding-dashboard",
+    "offboarding-process": "offboarding-dashboard",
+    "project-management": "project-dashboard-view",
+    "helpdesk-overview": "helpdesk-dashboard",
+}
+
+VALID_AUDIENCES = {"all", "admins", "managers", "employees"}
+
+
+class TourModuleSeedTests(TestCase):
+    """Verify migration 0004 seeded all 12 module tours correctly."""
+
+    def test_all_slugs_present_and_published(self):
+        for slug in MODULE_TOUR_SLUGS:
+            with self.subTest(slug=slug):
+                tour = Tour.objects.filter(slug=slug).first()
+                self.assertIsNotNone(tour, f"Tour '{slug}' not found in DB")
+                self.assertTrue(tour.is_published, f"Tour '{slug}' is not published")
+
+    def test_each_tour_has_minimum_steps(self):
+        for slug in MODULE_TOUR_SLUGS:
+            with self.subTest(slug=slug):
+                tour = Tour.objects.filter(slug=slug).first()
+                if tour is None:
+                    continue
+                step_count = TourStep.objects.filter(tour=tour).count()
+                self.assertGreaterEqual(
+                    step_count, 4, f"Tour '{slug}' has only {step_count} steps (need ≥ 4)"
+                )
+
+    def test_page_match_values_are_correct(self):
+        for slug, expected_page in MODULE_PAGE_MATCHES.items():
+            with self.subTest(slug=slug):
+                tour = Tour.objects.filter(slug=slug).first()
+                if tour is None:
+                    continue
+                self.assertEqual(
+                    tour.page_match,
+                    expected_page,
+                    f"Tour '{slug}': expected page_match '{expected_page}', got '{tour.page_match}'",
+                )
+
+    def test_audience_values_are_valid(self):
+        for slug in MODULE_TOUR_SLUGS:
+            with self.subTest(slug=slug):
+                tour = Tour.objects.filter(slug=slug).first()
+                if tour is None:
+                    continue
+                self.assertIn(
+                    tour.audience,
+                    VALID_AUDIENCES,
+                    f"Tour '{slug}' has invalid audience '{tour.audience}'",
+                )
+
+    def test_trigger_is_auto_once_for_all_module_tours(self):
+        for slug in MODULE_TOUR_SLUGS:
+            with self.subTest(slug=slug):
+                tour = Tour.objects.filter(slug=slug).first()
+                if tour is None:
+                    continue
+                self.assertEqual(
+                    tour.trigger,
+                    "auto_once",
+                    f"Tour '{slug}' should be auto_once but is '{tour.trigger}'",
+                )
+
+    def test_no_duplicate_slugs(self):
+        from django.db.models import Count
+
+        duplicates = (
+            Tour.objects.values("slug")
+            .annotate(cnt=Count("id"))
+            .filter(cnt__gt=1)
+        )
+        dup_slugs = [d["slug"] for d in duplicates]
+        self.assertEqual(dup_slugs, [], f"Duplicate tour slugs found: {dup_slugs}")
+
+    def test_global_tours_have_no_company(self):
+        """Module tours are seeded globally (company_id=None) so every tenant sees them."""
+        for slug in MODULE_TOUR_SLUGS:
+            with self.subTest(slug=slug):
+                tour = Tour.objects.filter(slug=slug).first()
+                if tour is None:
+                    continue
+                self.assertIsNone(
+                    tour.company_id_id,
+                    f"Tour '{slug}' should be global (company_id=None) but has company_id={tour.company_id_id}",
+                )
+
+
 class TourCompanyIsolationTests(TestCase):
     def setUp(self):
         # Clear any thread-local request left over from prior tests so
