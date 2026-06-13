@@ -1,0 +1,22 @@
+{% extends 'settings.html' %}
+{% block settings %}
+{% load static i18n %}
+
+<div class="d-flex align-items-center justify-content-between mb-2">
+    <h4 class="mb-0">{% trans "Product Tours" %}</h4>
+</div>
+<p class="text-muted" style="font-size:13px;">
+    {% trans "Create guided walkthroughs that appear for the right users on the right pages. Drafts stay hidden until published." %}
+</p>
+
+{# Nav (search + create) loads first, then the list into #listContainer #}
+<div hx-get="{% url 'tour-nav' %}" hx-trigger="load">
+    <div class="mt-3 oh-wrapper animated-background" style="height:60px;"></div>
+</div>
+
+<div class="oh-wrapper" id="listContainer"
+     hx-get="{% url 'tour-list' %}" hx-trigger="load">
+    <div class="mt-3 animated-background" style="height:420px;"></div>
+</div>
+
+{% endblock settings %}

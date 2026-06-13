@@ -1,0 +1,16 @@
+{% load i18n %}
+<form
+    hx-post="{% url 'tour-step-form' %}?tour_id={{ tour.id }}{% if step %}&step_id={{ step.id }}{% endif %}"
+    hx-target="#tourStepsPanel" hx-swap="outerHTML"
+    class="oh-card-dashboard p-3 border rounded">
+    {% csrf_token %}
+    <h4 class="mb-2">
+        {% if step %}{% trans "Edit step" %}{% else %}{% trans "Add step" %}{% endif %}
+    </h4>
+    {{ form.as_p }}
+    <div class="oh-modal__dialog-footer p-0 mt-2" style="text-align:end;">
+        <button type="submit" class="oh-btn oh-btn--secondary">
+            {% trans "Save step" %}
+        </button>
+    </div>
+</form>
