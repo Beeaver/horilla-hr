@@ -26,7 +26,12 @@ def _get_setup_checklist_context(request):
     """
     Builds the setup checklist context for the dashboard banner.
     Returns show_setup_checklist=False if dismissed or all steps complete.
+
+    In DEBUG mode, append ?preview_checklist=1 to force the banner visible
+    with all steps shown as incomplete (no data is altered).
     """
+    from django.conf import settings
+
     from base.models import (
         Company,
         Department,
@@ -37,7 +42,11 @@ def _get_setup_checklist_context(request):
         WorkType,
     )
 
-    if SetupChecklistDismissal.objects.filter(user=request.user).exists():
+    preview_mode = settings.DEBUG and request.GET.get("preview_checklist") == "1"
+
+    if not preview_mode and SetupChecklistDismissal.objects.filter(
+        user=request.user
+    ).exists():
         return {"show_setup_checklist": False}
 
     def _exists(qs):
@@ -113,10 +122,14 @@ def _get_setup_checklist_context(request):
         },
     ]
 
+    if preview_mode:
+        for s in steps:
+            s["done"] = False
+
     completed = sum(1 for s in steps if s["done"])
     total = len(steps)
 
-    if completed == total:
+    if not preview_mode and completed == total:
         return {"show_setup_checklist": False}
 
     next_step = next((s for s in steps if not s["done"]), None)
