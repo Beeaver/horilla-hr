@@ -2981,4 +2981,18 @@ class IntegrationApps(HorillaModel, NoPermissionModel):
     is_enabled = models.BooleanField(default=False)
 
 
+class SetupChecklistDismissal(models.Model):
+    """Tracks per-user dismissal of the onboarding setup checklist banner."""
+
+    user = models.OneToOneField(
+        HorillaUser,
+        on_delete=models.CASCADE,
+        related_name="setup_checklist_dismissal",
+    )
+    dismissed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = "base"
+
+
 # User.add_to_class("is_new_employee", models.BooleanField(default=False))

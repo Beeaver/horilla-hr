@@ -8,9 +8,129 @@ import json
 from datetime import date, timedelta
 
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
+from django.urls import reverse
+from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_http_methods
+
+
+def _safe_url(url_name):
+    try:
+        return reverse(url_name)
+    except Exception:
+        return "#"
+
+
+def _get_setup_checklist_context(request):
+    """
+    Builds the setup checklist context for the dashboard banner.
+    Returns show_setup_checklist=False if dismissed or all steps complete.
+    """
+    from base.models import (
+        Company,
+        Department,
+        EmployeeShift,
+        EmployeeType,
+        JobPosition,
+        SetupChecklistDismissal,
+        WorkType,
+    )
+
+    if SetupChecklistDismissal.objects.filter(user=request.user).exists():
+        return {"show_setup_checklist": False}
+
+    def _exists(qs):
+        try:
+            return qs.exists()
+        except Exception:
+            return False
+
+    def _has_employees():
+        try:
+            from employee.models import Employee
+
+            return Employee.objects.filter(is_active=True).exists()
+        except Exception:
+            return False
+
+    steps = [
+        {
+            "key": "company",
+            "title": _("Company"),
+            "description": _("Add your company profile — name, logo and timezone."),
+            "url": _safe_url("company-view"),
+            "icon": "business-outline",
+            "done": _exists(Company.objects.all()),
+        },
+        {
+            "key": "department",
+            "title": _("Departments"),
+            "description": _("Create the departments your employees will belong to."),
+            "url": _safe_url("department-view"),
+            "icon": "git-branch-outline",
+            "done": _exists(Department.objects.all()),
+        },
+        {
+            "key": "job_position",
+            "title": _("Job Positions"),
+            "description": _("Define named roles within each department."),
+            "url": _safe_url("job-position-view"),
+            "icon": "id-card-outline",
+            "done": _exists(JobPosition.objects.all()),
+        },
+        {
+            "key": "work_type",
+            "title": _("Work Types"),
+            "description": _("Set engagement types — Full Time, Part Time, Contract."),
+            "url": _safe_url("work-type-view"),
+            "icon": "time-outline",
+            "done": _exists(WorkType.objects.all()),
+        },
+        {
+            "key": "employee_type",
+            "title": _("Employee Types"),
+            "description": _("Set employment statuses — Permanent, Probation, Intern."),
+            "url": _safe_url("employee-type-view"),
+            "icon": "person-circle-outline",
+            "done": _exists(EmployeeType.objects.all()),
+        },
+        {
+            "key": "shift",
+            "title": _("Shifts"),
+            "description": _("Define working schedules — Morning, Evening, Night."),
+            "url": _safe_url("employee-shift-view"),
+            "icon": "moon-outline",
+            "done": _exists(EmployeeShift.objects.all()),
+        },
+        {
+            "key": "first_employee",
+            "title": _("First Employee"),
+            "description": _("Add your first employee to bring everything together."),
+            "url": _safe_url("employee-create-personal-info"),
+            "icon": "person-add-outline",
+            "done": _has_employees(),
+        },
+    ]
+
+    completed = sum(1 for s in steps if s["done"])
+    total = len(steps)
+
+    if completed == total:
+        return {"show_setup_checklist": False}
+
+    next_step = next((s for s in steps if not s["done"]), None)
+    progress_pct = int(completed / total * 100)
+
+    return {
+        "show_setup_checklist": True,
+        "setup_steps": steps,
+        "setup_completed": completed,
+        "setup_total": total,
+        "setup_next_step": next_step,
+        "setup_progress_pct": progress_pct,
+        "setup_dismiss_url": _safe_url("dashboard-dismiss-setup-checklist"),
+    }
 
 
 def _parse_period(request):
@@ -67,15 +187,23 @@ def main_dashboard_view(request):
     except Exception:
         pass
 
-    return render(
-        request,
-        "dashboard.html",
-        {
-            "enabled_timerunner": enabled_timerunner,
-            "get_forecasted_at_work": get_forecasted_at_work,
-            "employee_chart_prefs": employee_chart_prefs,
-        },
-    )
+    context = {
+        "enabled_timerunner": enabled_timerunner,
+        "get_forecasted_at_work": get_forecasted_at_work,
+        "employee_chart_prefs": employee_chart_prefs,
+    }
+    context.update(_get_setup_checklist_context(request))
+    return render(request, "dashboard.html", context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def dismiss_setup_checklist(request):
+    """HTMX endpoint — records dismissal and returns empty HTML to remove the banner."""
+    from base.models import SetupChecklistDismissal
+
+    SetupChecklistDismissal.objects.get_or_create(user=request.user)
+    return HttpResponse("")
 
 
 @login_required
