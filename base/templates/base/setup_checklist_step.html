@@ -1,13 +1,5 @@
 {% load i18n %}
-{#
-  Included by setup_checklist_banner.html once per step.
-  Context vars expected from the {% with %} block:
-    step         — step dict (key, title, url, done, left_line_active, right_line_active)
-    circle_cls   — CSS class for the circle (hcl-circle-done / hcl-circle-active / hcl-circle-pending)
-    label_cls    — CSS class for the label
-    is_active    — boolean, True for the current "next" step
-    forloop      — provided by the parent {% for %} loop
-#}
+{# Included by setup_checklist_banner.html — one step cell with connectors, circle and label. #}
 <div class="hcl-step" role="listitem">
 
     {# Left connector (from previous step to this one) #}
