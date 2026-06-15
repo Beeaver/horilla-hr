@@ -16,19 +16,86 @@ from django.views.decorators.http import require_http_methods
 
 
 def _safe_url(url_name):
+    """Reverse a URL name; return '#' if the URL is not registered."""
     try:
         return reverse(url_name)
     except Exception:
         return "#"
 
 
+# ---------------------------------------------------------------------------
+# Setup checklist helpers
+# ---------------------------------------------------------------------------
+
+def _is_setup_admin(request):
+    """
+    True for superusers, staff, and any user who can manage HR setup entities.
+    Regular employees (no management perms) are excluded — they can't complete
+    setup steps and should not see setup prompts.
+    """
+    user = request.user
+    if user.is_superuser or user.is_staff:
+        return True
+    return user.has_perm("base.add_department") or user.has_perm("base.add_company")
+
+
+def _resolve_checklist_company(request):
+    """
+    Return the integer PK of the company currently active for this request.
+
+    Priority:
+      1. The company stored in the ContextVar by the middleware
+      2. The first company in the DB (fresh install with no session yet)
+      3. None  (no company exists — the "Company" step is the first to do)
+    """
+    from horilla.horilla_middlewares import get_selected_company
+
+    company_id = get_selected_company()
+    if company_id and company_id != "all":
+        try:
+            return int(company_id)
+        except (TypeError, ValueError):
+            pass
+
+    # "all" or None → fall back to first company in the DB
+    from base.models import Company
+
+    first = Company.objects.first()
+    return first.pk if first else None
+
+
+def _exists_for_company(ModelClass, company_id):
+    """
+    Return True if at least one active record of ModelClass exists for the
+    given company, using the model manager's declared filter path so the query
+    is always correct regardless of whether company_id is a direct FK or a
+    traversal like department_id__company_id.
+    """
+    try:
+        filter_path = ModelClass.objects.get_company_filter_path()
+        if not filter_path:
+            return False
+        return (
+            ModelClass.objects.entire()
+            .filter(**{filter_path: company_id})
+            .exists()
+        )
+    except Exception:
+        return False
+
+
 def _get_setup_checklist_context(request):
     """
-    Builds the setup checklist context for the dashboard banner.
-    Returns show_setup_checklist=False if dismissed or all steps complete.
+    Builds the context for the onboarding setup checklist banner.
 
-    In DEBUG mode, append ?preview_checklist=1 to force the banner visible
-    with all steps shown as incomplete (no data is altered).
+    Returns ``{"show_setup_checklist": False}`` when:
+      • the user is not an admin/manager (regular employees skip it)
+      • the user has already dismissed the banner for the active company
+      • all 7 steps are complete for the active company
+
+    In DEBUG mode only, ``?preview_checklist=1`` forces the banner visible
+    with every step shown as incomplete — useful for testing on populated DBs
+    without deleting any data.
     """
     from django.conf import settings
 
@@ -42,16 +109,28 @@ def _get_setup_checklist_context(request):
         WorkType,
     )
 
-    preview_mode = settings.DEBUG and request.GET.get("preview_checklist") == "1"
-
-    if not preview_mode and SetupChecklistDismissal.objects.filter(
-        user=request.user
-    ).exists():
+    # 1. Permission gate — only show to admins / managers
+    if not _is_setup_admin(request):
         return {"show_setup_checklist": False}
 
-    def _exists(qs):
+    preview_mode = settings.DEBUG and request.GET.get("preview_checklist") == "1"
+
+    # 2. Resolve the company we're scoping the checklist to
+    company_pk = _resolve_checklist_company(request)
+
+    # 3. Check per-user, per-company dismissal
+    if not preview_mode:
+        dismissed = SetupChecklistDismissal.objects.filter(
+            user=request.user, company_id=company_pk
+        ).exists()
+        if dismissed:
+            return {"show_setup_checklist": False}
+
+    # 4. Build steps — each checks live DB scoped to the active company
+    def _has_company():
+        # Company itself is the root tenant object; any company existing is enough.
         try:
-            return qs.exists()
+            return Company.objects.exists()
         except Exception:
             return False
 
@@ -59,7 +138,7 @@ def _get_setup_checklist_context(request):
         try:
             from employee.models import Employee
 
-            return Employee.objects.filter(is_active=True).exists()
+            return _exists_for_company(Employee, company_pk)
         except Exception:
             return False
 
@@ -69,59 +148,53 @@ def _get_setup_checklist_context(request):
             "title": _("Company"),
             "description": _("Add your company profile — name, logo and timezone."),
             "url": _safe_url("company-view"),
-            "icon": "business-outline",
-            "done": _exists(Company.objects.all()),
+            "done": _has_company(),
         },
         {
             "key": "department",
             "title": _("Departments"),
             "description": _("Create the departments your employees will belong to."),
             "url": _safe_url("department-view"),
-            "icon": "git-branch-outline",
-            "done": _exists(Department.objects.all()),
+            "done": _exists_for_company(Department, company_pk) if company_pk else False,
         },
         {
             "key": "job_position",
             "title": _("Job Positions"),
             "description": _("Define named roles within each department."),
             "url": _safe_url("job-position-view"),
-            "icon": "id-card-outline",
-            "done": _exists(JobPosition.objects.all()),
+            "done": _exists_for_company(JobPosition, company_pk) if company_pk else False,
         },
         {
             "key": "work_type",
             "title": _("Work Types"),
             "description": _("Set engagement types — Full Time, Part Time, Contract."),
             "url": _safe_url("work-type-view"),
-            "icon": "time-outline",
-            "done": _exists(WorkType.objects.all()),
+            "done": _exists_for_company(WorkType, company_pk) if company_pk else False,
         },
         {
             "key": "employee_type",
             "title": _("Employee Types"),
             "description": _("Set employment statuses — Permanent, Probation, Intern."),
             "url": _safe_url("employee-type-view"),
-            "icon": "person-circle-outline",
-            "done": _exists(EmployeeType.objects.all()),
+            "done": _exists_for_company(EmployeeType, company_pk) if company_pk else False,
         },
         {
             "key": "shift",
             "title": _("Shifts"),
             "description": _("Define working schedules — Morning, Evening, Night."),
             "url": _safe_url("employee-shift-view"),
-            "icon": "moon-outline",
-            "done": _exists(EmployeeShift.objects.all()),
+            "done": _exists_for_company(EmployeeShift, company_pk) if company_pk else False,
         },
         {
             "key": "first_employee",
             "title": _("First Employee"),
             "description": _("Add your first employee to bring everything together."),
             "url": _safe_url("employee-create-personal-info"),
-            "icon": "person-add-outline",
-            "done": _has_employees(),
+            "done": _has_employees() if company_pk else False,
         },
     ]
 
+    # 5. Preview mode overrides all done flags to False
     if preview_mode:
         for s in steps:
             s["done"] = False
@@ -129,8 +202,16 @@ def _get_setup_checklist_context(request):
     completed = sum(1 for s in steps if s["done"])
     total = len(steps)
 
+    # Auto-hide once all steps are complete (no dismiss record needed)
     if not preview_mode and completed == total:
         return {"show_setup_checklist": False}
+
+    # 6. Precompute connector-line state for the template.
+    #    The line segment BETWEEN step N and N+1 is "active" (indigo) when
+    #    step N is done — this produces the Odoo-style progressive fill.
+    for i, step in enumerate(steps):
+        step["left_line_active"] = (i > 0) and steps[i - 1]["done"]
+        step["right_line_active"] = step["done"] and (i < total - 1)
 
     next_step = next((s for s in steps if not s["done"]), None)
     progress_pct = int(completed / total * 100)
@@ -143,6 +224,7 @@ def _get_setup_checklist_context(request):
         "setup_next_step": next_step,
         "setup_progress_pct": progress_pct,
         "setup_dismiss_url": _safe_url("dashboard-dismiss-setup-checklist"),
+        "setup_company_pk": company_pk,
     }
 
 
@@ -212,10 +294,19 @@ def main_dashboard_view(request):
 @login_required
 @require_http_methods(["POST"])
 def dismiss_setup_checklist(request):
-    """HTMX endpoint — records dismissal and returns empty HTML to remove the banner."""
+    """
+    HTMX endpoint — records per-user, per-company dismissal and returns empty
+    HTML so the banner is removed via outerHTML swap.
+    Only admins can dismiss (non-admins never see the banner anyway).
+    """
     from base.models import SetupChecklistDismissal
 
-    SetupChecklistDismissal.objects.get_or_create(user=request.user)
+    if _is_setup_admin(request):
+        company_pk = _resolve_checklist_company(request)
+        SetupChecklistDismissal.objects.get_or_create(
+            user=request.user,
+            company_id=company_pk,
+        )
     return HttpResponse("")
 
 
