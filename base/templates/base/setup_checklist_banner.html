@@ -1,13 +1,4 @@
 {% load i18n %}
-{#
-  Onboarding setup checklist banner.
-  - Shown only to admins/managers on the main dashboard.
-  - Auto-hidden once all 7 steps complete (no dismiss needed).
-  - Dismiss button: HTMX POST + outerHTML swap (per-user, per-company).
-  - Full dark-mode support via .dark class on <html>.
-  - ARIA progressbar + aria-current on active step.
-  - Mobile: steps scroll horizontally; action card stacks vertically.
-#}
 
 <style>
 /* ── Banner card ────────────────────────────────────────────────────────── */

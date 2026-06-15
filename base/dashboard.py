@@ -66,18 +66,25 @@ def _resolve_checklist_company(request):
 
 def _exists_for_company(ModelClass, company_id):
     """
-    Return True if at least one active record of ModelClass exists for the
-    given company, using the model manager's declared filter path so the query
-    is always correct regardless of whether company_id is a direct FK or a
-    traversal like department_id__company_id.
+    Return True if at least one record of ModelClass is visible for the given
+    company.  Mirrors HorillaCompanyManager: a record is visible when it is
+    explicitly assigned to this company OR has no company assignment at all
+    (meaning it is shared across all companies — common for lookup tables like
+    WorkType, EmployeeType, EmployeeShift whose M2M company_id may be empty).
     """
+    from django.db.models import Q
+
     try:
         filter_path = ModelClass.objects.get_company_filter_path()
         if not filter_path:
             return False
+        null_path = f"{filter_path}__isnull"
         return (
             ModelClass.objects.entire()
-            .filter(**{filter_path: company_id})
+            .filter(
+                Q(**{filter_path: company_id})
+                | Q(**{null_path: True})
+            )
             .exists()
         )
     except Exception:
