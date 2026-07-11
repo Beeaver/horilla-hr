@@ -1,20 +1,23 @@
 services:
   web:
     build: .
+    restart: unless-stopped
     ports:
       - "8000:8000"
     volumes:
-      - .:/app
       - staticfiles:/app/staticfiles
       - media:/app/media
+    env_file:
+      - path: .env
+        required: false
     environment:
-      - DEBUG=1
-      - SECRET_KEY=dev-secret-key-change-in-production
-      - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
-      - CSRF_TRUSTED_ORIGINS=http://localhost:8000
-      - DATABASE_URL=postgres://horilla_user:horilla_pass@db:5432/horilla_db
-      - DB_INIT_PASSWORD=dev-init-password-change-in-production
-      - REDIS_URL=redis://:horilla_pass@redis:6379/0
+      DEBUG: ${DEBUG:-False}
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:8000}
+      DATABASE_URL: ${DATABASE_URL:-postgres://horilla_user:horilla_pass@db:5432/horilla_db}
+      DB_INIT_PASSWORD: ${DB_INIT_PASSWORD:?Set DB_INIT_PASSWORD in .env}
+      REDIS_URL: ${REDIS_URL:-redis://:horilla_pass@redis:6379/0}
     depends_on:
       db:
         condition: service_healthy
@@ -29,31 +32,34 @@ services:
 
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: horilla_db
-      POSTGRES_USER: horilla_user
-      POSTGRES_PASSWORD: horilla_pass
+      POSTGRES_DB: ${POSTGRES_DB:-horilla_db}
+      POSTGRES_USER: ${POSTGRES_USER:-horilla_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-horilla_pass}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U horilla_user -d horilla_db"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    command: redis-server --appendonly yes --requirepass horilla_pass
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-horilla_pass}
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "horilla_pass", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-horilla_pass}", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   nginx:
     image: nginx:alpine
+    restart: unless-stopped
     ports:
       - "80:80"
     volumes:
