@@ -25,22 +25,53 @@ env = environ.Env(
     CSRF_TRUSTED_ORIGINS=(list, ["http://localhost:8000"]),
 )
 
-env.read_env(os.path.join(BASE_DIR, ".env"), overwrite=True)
+# Do not overwrite process env (Dokploy/Docker inject runtime vars)
+env.read_env(os.path.join(BASE_DIR, ".env"), overwrite=False)
 
 # ========================================
 # CORE DJANGO SETTINGS
 # ========================================
 SECRET_KEY = env("SECRET_KEY")
 DEBUG = env("DEBUG")
-ALLOWED_HOSTS = env("ALLOWED_HOSTS")
-CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
 
-# Safe behind Traefik / Dokploy / nginx
+
+def _parse_host_list(value):
+    """Parse ALLOWED_HOSTS from env; tolerate quotes, spaces, and commas."""
+    if value is None:
+        return ["*"]
+    if isinstance(value, (list, tuple)):
+        raw = list(value)
+    else:
+        raw = str(value).replace(";", ",").split(",")
+    hosts = []
+    for item in raw:
+        host = str(item).strip().strip('"').strip("'")
+        if host:
+            hosts.append(host)
+    return hosts or ["*"]
+
+
+# Read as string first so Dokploy/compose values are not mis-parsed
+ALLOWED_HOSTS = _parse_host_list(env.str("ALLOWED_HOSTS", default="*"))
+# Healthchecks hit Host: localhost inside the container
+for _h in ("localhost", "127.0.0.1"):
+    if "*" not in ALLOWED_HOSTS and _h not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_h)
+
+CSRF_TRUSTED_ORIGINS = [
+    o.strip().strip('"').strip("'")
+    for o in env.list("CSRF_TRUSTED_ORIGINS", default=[])
+    if o and str(o).strip()
+]
+
+# Trust TLS scheme from Traefik/Cloudflare only.
+# Do NOT enable USE_X_FORWARDED_HOST (breaks Host checks behind Cloudflare).
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-USE_X_FORWARDED_HOST = True
 if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+
+print(f"[horilla] ALLOWED_HOSTS={ALLOWED_HOSTS!r} DEBUG={DEBUG}")
 
 THEME_APP = "horilla_theme"
 
@@ -255,7 +286,7 @@ WSGI_APPLICATION = "horilla.wsgi.application"
 # INTERNATIONALIZATION
 # ========================================
 LANGUAGE_CODE = "en-us"
-TIME_ZONE = env("TIME_ZONE", default="Asia/Kolkata")
+TIME_ZONE = env("TIME_ZONE", default="Asia/Kathmandu")
 USE_I18N = True
 USE_TZ = True
 
