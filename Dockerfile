@@ -38,7 +38,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
 
-# Install only runtime dependencies
+# Install only runtime dependencies (+ wkhtmltopdf for payslip PDFs)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         libpq5 \
@@ -51,17 +51,21 @@ RUN apt-get update \
         libxslt1.1 \
         libffi8 \
         curl \
+        ca-certificates \
         netcat-openbsd \
-        # Payslip / PDF generation (pdfkit)
-        wkhtmltopdf \
         fontconfig \
         fonts-dejavu-core \
         fonts-liberation \
-        libxrender1 \
+        libx11-6 \
+        libxcb1 \
         libxext6 \
+        libxrender1 \
         libfontconfig1 \
-        xfonts-75dpi \
-        xfonts-base \
+    && ARCH="$(dpkg --print-architecture)" \
+    && curl -fsSL -o /tmp/wkhtmltox.deb \
+        "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_${ARCH}.deb" \
+    && apt-get install -y --no-install-recommends /tmp/wkhtmltox.deb \
+    && rm -f /tmp/wkhtmltox.deb \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean \
     && wkhtmltopdf --version
