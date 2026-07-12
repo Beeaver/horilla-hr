@@ -19,6 +19,9 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgres://horilla_user:horilla_pass@db:5432/horilla_db}
       DB_INIT_PASSWORD: ${DB_INIT_PASSWORD:?Set DB_INIT_PASSWORD in .env}
       REDIS_URL: ${REDIS_URL:-redis://:horilla_pass@redis:6379/0}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
+      GUNICORN_THREADS: ${GUNICORN_THREADS:-2}
+      CONN_MAX_AGE: ${CONN_MAX_AGE:-0}
     depends_on:
       db:
         condition: service_healthy
@@ -34,6 +37,7 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    command: postgres -c max_connections=200
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-horilla_db}
       POSTGRES_USER: ${POSTGRES_USER:-horilla_user}

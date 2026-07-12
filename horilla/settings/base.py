@@ -210,6 +210,11 @@ else:
         }
     }
 
+# Avoid leaking Postgres connections under Gunicorn gthread + APScheduler.
+# 0 = close after each request (safest for small Docker/Dokploy deploys).
+DATABASES["default"]["CONN_MAX_AGE"] = env.int("CONN_MAX_AGE", default=0)
+DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
+
 # ========================================
 # STATIC & MEDIA FILES
 # ========================================

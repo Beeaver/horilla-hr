@@ -52,8 +52,19 @@ RUN apt-get update \
         libffi8 \
         curl \
         netcat-openbsd \
+        # Payslip / PDF generation (pdfkit)
+        wkhtmltopdf \
+        fontconfig \
+        fonts-dejavu-core \
+        fonts-liberation \
+        libxrender1 \
+        libxext6 \
+        libfontconfig1 \
+        xfonts-75dpi \
+        xfonts-base \
     && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && apt-get clean \
+    && wkhtmltopdf --version
 
 # Create non-root user FIRST
 RUN useradd --create-home --uid 1000 appuser
